@@ -342,27 +342,67 @@ function renderHospitals() {
 function connectWS() {
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${scheme}://${location.host}/ws/dispatchers/`);
-    ws.onopen = () => { updateWsIndicator('connected'); ws.send(JSON.stringify({type:'get_initial_data'})); };
+    ws.onopen = () => { 
+        updateWsIndicator('connected'); 
+        ws.send(JSON.stringify({type:'get_initial_data'})); 
+    };
     ws.onmessage = (e) => {
-        const msg = JSON.parse(e.data);
-        if (msg.type === 'initial_data') {
-            callsById.clear(); ambulancesById.clear();
-            for (const c of msg.data.emergencies) callsById.set(c.id, c);
-            for (const a of msg.data.ambulances) ambulancesById.set(a.id, a);
-            renderCalls(currentCallsFilter); renderLayers(); renderFleetList();
-        } else if (msg.type === 'emergency_update') {
-            const c = msg.data; callsById.set(c.id, c); renderCalls(currentCallsFilter); renderLayers();
-            showToast(`Emergency ${c.call_id}: ${msg.event.replace('_',' ')}`, 'info');
-        } else if (msg.type === 'ambulance_update') {
-            const a = msg.data; ambulancesById.set(a.id, a); renderLayers(); renderFleetList();
+        try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'initial_data') {
+                callsById.clear(); 
+                ambulancesById.clear();
+                if (msg.data && msg.data.emergencies) {
+                    for (const c of msg.data.emergencies) callsById.set(c.id, c);
+                }
+                if (msg.data && msg.data.ambulances) {
+                    for (const a of msg.data.ambulances) ambulancesById.set(a.id, a);
+                }
+                if (msg.data && msg.data.hospitals) {
+                    hospitals = msg.data.hospitals;
+                }
+                renderCalls(currentCallsFilter); 
+                renderLayers(); 
+                renderFleetList();
+            } else if (msg.type === 'emergency_update') {
+                if (msg.data) {
+                    const c = msg.data; 
+                    callsById.set(c.id, c); 
+                    renderCalls(currentCallsFilter); 
+                    renderLayers();
+                    showToast(`Emergency ${c.call_id}: ${msg.event.replace(/_/g,' ')}`, 'info');
+                }
+            } else if (msg.type === 'ambulance_update') {
+                if (msg.data) {
+                    const a = msg.data; 
+                    ambulancesById.set(a.id, a); 
+                    renderLayers(); 
+                    renderFleetList();
+                }
+            } else if (msg.type === 'ambulance_alarm') {
+                // Play ambulance alarm sound when new emergency enters system
+                playAmbulanceAlarm();
+                if (msg.data) {
+                    const c = msg.data;
+                    showToast(`🚨 NEW EMERGENCY ALERT: ${c.call_id} - ${c.emergency_type_display || c.emergency_type}`, 'danger');
+                }
+            } else if (msg.type === 'error') {
+                console.error('WebSocket error:', msg.message);
+                showToast('Server error: ' + msg.message, 'warning');
+            }
+        } catch (err) {
+            console.error('Error processing WebSocket message:', err);
+            showToast('An error occurred. Please check the console for details.', 'error');
         }
     };
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+        console.error('WebSocket error event:', event);
         updateWsIndicator('error');
-        showToast('WebSocket error', 'warning');
+        showToast('WebSocket error - Switching to polling mode', 'warning');
         startPollingFallback();
     };
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code);
         updateWsIndicator('closed');
         startPollingFallback();
         setTimeout(connectWS, 10000);
@@ -386,19 +426,47 @@ function showDispatchModal(callId) {
     
     // Populate ambulance options
     const ambulanceSelect = document.getElementById('ambulanceSelect');
-    ambulanceSelect.innerHTML = '<option value="">Choose available ambulance...</option>';
-    Array.from(ambulancesById.values()).filter(a => a.status === 'AVAILABLE').forEach(amb => {
-        ambulanceSelect.innerHTML += `<option value="${amb.id}">Unit ${amb.unit_number} (${amb.unit_type_display || amb.unit_type})</option>`;
-    });
+    ambulanceSelect.innerHTML = '<option value="">Loading ambulances...</option>';
     
-    // Populate paramedic options (cached)
+    // Fetch fresh ambulance data to ensure latest status
+    fetch('/dispatch/api/ambulances/')
+        .then(r => r.ok ? r.json() : [])
+        .then(ambulances => {
+            const availableAmbulances = (ambulances || []).filter(a => a.status === 'AVAILABLE');
+            
+            if (availableAmbulances.length === 0) {
+                ambulanceSelect.innerHTML = '<option value="">No available ambulances</option>';
+                ambulanceSelect.disabled = true;
+                const div = document.createElement('div');
+                div.className = 'alert alert-warning mt-2';
+                div.textContent = 'No ambulances are currently available for dispatch. Please check the fleet status.';
+                ambulanceSelect.parentElement.appendChild(div);
+                return;
+            }
+            
+            ambulanceSelect.innerHTML = '<option value="">Choose available ambulance...</option>';
+            availableAmbulances.forEach(amb => {
+                ambulanceSelect.innerHTML += `<option value="${amb.id}">Unit ${amb.unit_number} (${amb.unit_type_display || amb.unit_type})</option>`;
+            });
+            ambulanceSelect.disabled = false;
+            
+            // Remove any existing warning
+            const warning = ambulanceSelect.parentElement.querySelector('.alert-warning');
+            if (warning) warning.remove();
+        })
+        .catch(err => {
+            console.error('Error loading ambulances:', err);
+            ambulanceSelect.innerHTML = '<option value="">Error loading ambulances</option>';
+            ambulanceSelect.disabled = true;
+        });
+    
+    // Populate paramedic options with auto-assign capability
     const paramedicSelect = document.getElementById('paramedicSelect');
     paramedicSelect.innerHTML = '<option value="">Auto-assign or select...</option>';
+    
     const fillParamedics = (list)=>{
         if (!Array.isArray(list) || list.length === 0) {
-            const opt = document.createElement('option');
-            opt.disabled = true; opt.textContent = 'No paramedics available';
-            paramedicSelect.appendChild(opt);
+            paramedicSelect.innerHTML = '<option value="">No paramedics available</option>';
             return;
         }
         list.forEach(p=>{
@@ -406,13 +474,14 @@ function showDispatchModal(callId) {
             paramedicSelect.innerHTML += `<option value="${p.id}">${name}</option>`;
         });
     };
+    
     if (paramedicCache) {
         fillParamedics(paramedicCache);
     } else {
-        fetch('/core/api/paramedics/?available=1', { headers: { 'Accept': 'application/json' }})
+        fetch('/api/paramedics/?available=1', { headers: { 'Accept': 'application/json' }})
             .then(r=> r.ok ? r.json() : [])
             .then(list=>{ paramedicCache = list||[]; fillParamedics(paramedicCache); })
-            .catch(()=>{ fillParamedics([]); });
+            .catch((err)=>{ console.error('Error loading paramedics:', err); fillParamedics([]); });
     }
 
     // Add hospital selector dynamically if not present
@@ -431,17 +500,34 @@ function showDispatchModal(callId) {
         form.appendChild(wrapper);
         hospitalSelect = document.getElementById('hospitalSelect');
     }
+    
+    // Populate hospitals - prioritize based on capacity
     hospitalSelect.innerHTML = '<option value="">Select destination...</option>';
-    (hospitals||[]).forEach(h => {
-        hospitalSelect.innerHTML += `<option value="${h.id}">${h.name} (${h.emergency_capacity_display||h.emergency_capacity})</option>`;
-    });
+    if (hospitals && Array.isArray(hospitals) && hospitals.length > 0) {
+        // Sort hospitals by capacity (LOW first, then MODERATE, etc.)
+        const capacityOrder = { 'LOW': 0, 'MODERATE': 1, 'HIGH': 2, 'FULL': 3 };
+        const sortedHospitals = [...hospitals].sort((a, b) => {
+            const aOrder = capacityOrder[a.emergency_capacity] ?? 99;
+            const bOrder = capacityOrder[b.emergency_capacity] ?? 99;
+            return aOrder - bOrder;
+        });
+        
+        sortedHospitals.forEach(h => {
+            const capacity = h.emergency_capacity_display || h.emergency_capacity;
+            const beds = (h.available_beds != null && h.total_beds != null) ? ` (${h.available_beds}/${h.total_beds} beds)` : '';
+            hospitalSelect.innerHTML += `<option value="${h.id}">${h.name} - ${capacity}${beds}</option>`;
+        });
+    } else {
+        hospitalSelect.innerHTML += '<option disabled>Loading hospitals...</option>';
+    }
     
     new bootstrap.Modal(document.getElementById('dispatchModal')).show();
 }
 
 function dispatchAmbulance() {
     const ambulanceId = document.getElementById('ambulanceSelect').value;
-    const paramedicId = document.getElementById('paramedicSelect').value;
+    const paramedicSelect = document.getElementById('paramedicSelect');
+    let paramedicId = paramedicSelect ? paramedicSelect.value : '';
     const hospitalId = document.getElementById('hospitalSelect') ? document.getElementById('hospitalSelect').value : '';
     
     if (!ambulanceId) {
@@ -449,35 +535,76 @@ function dispatchAmbulance() {
         return;
     }
     
-    const data = {
-        emergency_call_id: selectedCallId,
-        ambulance_id: parseInt(ambulanceId),
-        paramedic_id: paramedicId ? parseInt(paramedicId) : null
-    };
-    if (hospitalId) data.hospital_id = parseInt(hospitalId);
-    
-    fetch('/dispatch/api/dispatch/', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCsrfToken()
-        },
-        body: JSON.stringify(data)
-    }).then(response => {
-        if (!response.ok) {
-            return response.json().then(err => Promise.reject(err));
+    // Helper function to perform dispatch
+    const performDispatch = (pId) => {
+        const data = {
+            emergency_call_id: selectedCallId,
+            ambulance_id: parseInt(ambulanceId),
+        };
+        
+        if (pId && pId !== '' && pId !== '0') {
+            data.paramedic_id = parseInt(pId);
         }
-        return response.json();
-    }).then(result => {
-        showToast('Ambulance dispatched successfully', 'success');
-        bootstrap.Modal.getInstance(document.getElementById('dispatchModal')).hide();
-        // Data will be updated via WebSocket
-    }).catch(error => {
-        console.error('Dispatch error:', error);
-        let errorMessage = 'Failed to dispatch ambulance';
-        if (error && typeof error === 'object') {
-            const errors = [];
-            for (const [field, messages] of Object.entries(error)) {
+        
+        if (hospitalId && hospitalId !== '') {
+            data.hospital_id = parseInt(hospitalId);
+        }
+        
+        fetch('/dispatch/api/dispatch/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify(data)
+        }).then(response => {
+            if (!response.ok) {
+                return response.json().then(err => Promise.reject(err));
+            }
+            return response.json();
+        }).then(result => {
+            showToast('Ambulance dispatched successfully', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('dispatchModal')).hide();
+            // Data will be updated via WebSocket
+        }).catch(error => {
+            console.error('Dispatch error:', error);
+            let errorMessage = 'Failed to dispatch ambulance';
+            if (error && typeof error === 'object') {
+                const errors = [];
+                for (const [field, messages] of Object.entries(error)) {
+                    if (Array.isArray(messages)) {
+                        errors.push(`${field}: ${messages.join(', ')}`);
+                    } else {
+                        errors.push(`${field}: ${messages}`);
+                    }
+                }
+                if (errors.length > 0) errorMessage = errors.join(' | ');
+            }
+            showToast(errorMessage, 'error');
+        });
+    };
+    
+    // If no paramedic selected, try to auto-assign
+    if (!paramedicId || paramedicId === '' || paramedicId === '0') {
+        showToast('Auto-assigning paramedic...', 'info');
+        fetch('/dispatch/api/dispatch/auto-assign-paramedic/', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json', 'X-CSRFToken': getCsrfToken() }
+        }).then(r => {
+            if (!r.ok) return Promise.reject('Auto-assign failed');
+            return r.json();
+        }).then(paramedic => {
+            showToast(`Paramedic ${paramedic.full_name} auto-assigned`, 'success');
+            paramedicId = paramedic.id;
+            performDispatch(paramedicId);
+        }).catch(err => {
+            console.warn('Auto-assign failed, continuing without paramedic:', err);
+            performDispatch(null);
+        });
+    } else {
+        performDispatch(paramedicId);
+    }
+}
                 if (Array.isArray(messages)) {
                     errors.push(`${field}: ${messages.join(', ')}`);
                 } else {
@@ -588,6 +715,50 @@ function startPollingFallback() {
     };
     fetchAll();
     pollingTimer = setInterval(fetchAll, 10000);
+}
+
+// Ambulance alarm sound function
+function playAmbulanceAlarm() {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Create multiple beeps for ambulance siren effect
+        const beep = (frequency, duration, start) => {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioContext.destination);
+            
+            osc.frequency.value = frequency;
+            osc.type = 'sine';
+            
+            gain.gain.setValueAtTime(0.3, start);
+            gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+            
+            osc.start(start);
+            osc.stop(start + duration);
+        };
+        
+        // Play alternating high-low beeps (siren pattern)
+        const now = audioContext.currentTime;
+        const pattern = [
+            { freq: 1000, duration: 0.3 },
+            { freq: 600, duration: 0.3 },
+            { freq: 1000, duration: 0.3 },
+            { freq: 600, duration: 0.3 },
+            { freq: 1000, duration: 0.3 },
+            { freq: 600, duration: 0.3 }
+        ];
+        
+        let time = now;
+        pattern.forEach(({freq, duration}) => {
+            beep(freq, duration, time);
+            time += duration;
+        });
+    } catch (e) {
+        console.error('Failed to play ambulance alarm:', e);
+    }
 }
 </script>
 {% endblock %}

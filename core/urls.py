@@ -8,6 +8,7 @@ urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     path('admin-dashboard/', views.admin_dashboard, name='admin_dashboard'),
+    path('initialize-users/', views.initialize_test_users_view, name='initialize_users'),
     # Testing tools
     path('test/websocket/', views.test_websocket_view, name='test_websocket'),
     # Admin API for users

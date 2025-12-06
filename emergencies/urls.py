@@ -6,6 +6,7 @@ app_name = 'emergencies'
 urlpatterns = [
     # Web views
     path('emergency/', views.landing_page, name='landing'),
+    path('test-alert/', views.test_emergency_alert, name='test_alert'),
     path('dashboard/', views.dispatcher_dashboard, name='dispatcher_dashboard'),
     path('dashboard/pending/', views.dispatcher_dashboard, {'default_filter': 'pending'}, name='dispatcher_dashboard_pending'),
     path('dashboard/active/', views.dispatcher_dashboard, {'default_filter': 'active'}, name='dispatcher_dashboard_active'),
@@ -16,6 +17,7 @@ urlpatterns = [
     path('api/emergencies/', views.EmergencyCallListCreateView.as_view(), name='emergency_list_create'),
     path('api/emergencies/<int:pk>/', views.EmergencyCallDetailView.as_view(), name='emergency_detail'),
     path('api/emergencies/<int:pk>/status/', views.update_emergency_status, name='update_emergency_status'),
+    path('api/emergencies/<int:pk>/acknowledge/', views.paramedic_dispatch_acknowledged, name='paramedic_acknowledge'),
     path('api/emergencies/active/', views.active_emergencies, name='active_emergencies'),
     path('api/emergencies/my-active/', views.my_active_call, name='my_active_call'),
     path('api/emergencies/upload-image/', views.upload_emergency_image, name='upload_emergency_image'),

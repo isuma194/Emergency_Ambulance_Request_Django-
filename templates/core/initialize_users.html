@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Initialization</title>
+    <link href="{% static 'css/bootstrap.min.css' %}" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .user-card {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+        }
+        .user-card h5 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .credentials {
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            margin: 10px 0;
+            border: 1px solid #e0e0e0;
+        }
+        .badge-created {
+            background: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .badge-existing {
+            background: #ffc107;
+            color: #333;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .btn-container {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background: #764ba2;
+            color: white;
+            text-decoration: none;
+        }
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚑 System Initialized</h1>
+        
+        <div class="info-box">
+            <strong>✓ All test users have been created successfully!</strong><br>
+            You can now log in with any of the accounts below.
+        </div>
+
+        {% for user in users %}
+        <div class="user-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h5>{{ user.username|upper }}</h5>
+                    <small class="text-muted">Role: {{ user.role|upper }}</small>
+                </div>
+                <div>
+                    {% if user.created %}
+                        <span class="badge-created">CREATED</span>
+                    {% else %}
+                        <span class="badge-existing">EXISTS</span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <div><strong>Username:</strong></div>
+                <div class="credentials">{{ user.username }}</div>
+                
+                <div style="margin-top: 10px;"><strong>Password:</strong></div>
+                <div class="credentials">{{ user.password }}</div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="btn-container">
+            <a href="{% url 'core:login' %}" class="btn">
+                Go to Login
+            </a>
+        </div>
+
+        <hr style="margin: 30px 0;">
+
+        <div style="background: #f0f0f0; padding: 20px; border-radius: 6px;">
+            <h6>Available Dashboards:</h6>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li><strong>Dispatcher:</strong> Manage emergencies and dispatch ambulances</li>
+                <li><strong>Paramedic:</strong> View assignments and patient preparation tasks</li>
+                <li><strong>Admin:</strong> System administration panel</li>
+            </ul>
+        </div>
+    </div>
+
+    <script src="{% static 'js/bootstrap.min.js' %}"></script>
+</body>
+</html>

@@ -75,6 +75,16 @@ class DispatcherConsumer(AsyncWebsocketConsumer):
             'data': event['data']
         }))
     
+    async def ambulance_alarm(self, event):
+        """Handle ambulance alarm for new emergency"""
+        logger.info(f"📢 DispatcherConsumer.ambulance_alarm triggered: {event.get('event')}")
+        await self.send(text_data=json.dumps({
+            'type': 'ambulance_alarm',
+            'event': event['event'],
+            'data': event['data']
+        }))
+        logger.info(f"✓ Ambulance alarm sent to dispatcher websocket")
+    
     async def send_initial_data(self):
         """Send initial data to the dispatcher"""
         try:

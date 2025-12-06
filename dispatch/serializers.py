@@ -64,8 +64,8 @@ class DispatchSerializer(serializers.Serializer):
     
     emergency_call_id = serializers.IntegerField()
     ambulance_id = serializers.IntegerField()
-    paramedic_id = serializers.IntegerField(required=False)
-    hospital_id = serializers.IntegerField(required=False)
+    paramedic_id = serializers.IntegerField(required=False, allow_null=True)
+    hospital_id = serializers.IntegerField(required=False, allow_null=True)
     
     def validate_emergency_call_id(self, value):
         """Validate emergency call exists and is in correct status"""
@@ -101,6 +101,7 @@ class DispatchSerializer(serializers.Serializer):
         return value
 
     def validate_hospital_id(self, value):
+        """Validate hospital exists if provided"""
         if value:
             from .models import Hospital
             try:

@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-97xdb=e0&0fl01m-w1a8g&l3368#mxg-mg31+0xsq=9x3-27kf
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
+ALLOWED_HOSTS = ['*']  # Allow all hosts in development
 
 
 # Application definition
@@ -175,10 +175,25 @@ def test_redis_connection():
     """Test if Redis server is actually running"""
     try:
         import redis
-        r = redis.Redis(host='127.0.0.1', port=6379, socket_connect_timeout=1)
+        from redis.connection import ConnectionPool
+        # Create connection without retry
+        pool = ConnectionPool(
+            host='127.0.0.1',
+            port=6379,
+            socket_connect_timeout=0.3,
+            socket_keepalive=False,
+            retry_on_timeout=False
+        )
+        r = redis.Redis(connection_pool=pool)
         r.ping()
+        pool.disconnect()
         return True
-    except Exception:
+    except Exception as e:
+        try:
+            pool.disconnect()
+        except:
+            pass
+        print(f"Redis not available, using in-memory channel layer")
         return False
 
 if test_redis_connection():

@@ -1,82 +1,328 @@
 {% extends 'base.html' %}
 
-{% block title %}Field Interface{% endblock %}
+{% block title %}Field Interface - Paramedic{% endblock %}
 
 {% block content %}
-<div class="container py-3">
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="card-title mb-0"><i class="fas fa-mobile-alt me-2"></i>Active Call</h5>
-                <span id="wsIndicator" class="badge bg-secondary">WS: unknown</span>
-            </div>
-            {% if active_call %}
-            <div class="mb-3" id="activeCallCard" data-call-id="{{ active_call.id }}" data-ambulance-id="{% if active_call.assigned_ambulance %}{{ active_call.assigned_ambulance.id }}{% endif %}">
-                <div class="fw-bold">{{ active_call.call_id }} • {{ active_call.get_emergency_type_display }}</div>
-                <div class="text-muted small">
-                    <i class="fas fa-location-dot me-1"></i>{{ active_call.location_address }}
-                    {% if active_call.description %}
-                    <br><i class="fas fa-info-circle me-1"></i>{{ active_call.description }}
-                    {% endif %}
-                </div>
-                <div class="mt-2">
-                    <span class="badge text-bg-secondary me-2">Priority: {{ active_call.get_priority_display }}</span>
-                    <span id="statusBadge" class="badge bg-primary">{{ active_call.get_status_display }}</span>
-                </div>
-                {% if active_call.patient_name %}
-                <div class="mt-2">
-                    <strong>Patient:</strong> {{ active_call.patient_name }}
-                    {% if active_call.patient_age %} ({{ active_call.patient_age }} years){% endif %}
-                    {% if active_call.patient_condition %}<br><em>{{ active_call.patient_condition }}</em>{% endif %}
-                </div>
-                {% endif %}
-            </div>
-            <div class="d-grid gap-2">
-                <button id="btnEnRoute" class="btn btn-outline-primary" onclick="guardedUpdate('EN_ROUTE')">
-                    <i class="fas fa-car me-2"></i>EN ROUTE
-                </button>
-                <button id="btnOnScene" class="btn btn-outline-danger" onclick="guardedUpdate('ON_SCENE')">
-                    <i class="fas fa-hospital me-2"></i>ON SCENE
-                </button>
-                <button id="btnTransporting" class="btn btn-outline-purple" onclick="guardedUpdate('TRANSPORTING')">
-                    <i class="fas fa-ambulance me-2"></i>TRANSPORTING
-                </button>
-                <button id="btnAtHospital" class="btn btn-outline-success" onclick="confirmAndUpdate('AT_HOSPITAL', 'Confirm arrival at hospital?')">
-                    <i class="fas fa-building me-2"></i>AT HOSPITAL
-                </button>
-                <button id="btnClosed" class="btn btn-outline-secondary" onclick="confirmAndUpdate('CLOSED', 'Close the call and return to service?')">
-                    <i class="fas fa-check-circle me-2"></i>BACK IN SERVICE
-                </button>
-            </div>
-            <hr>
-            <div class="row">
-                <div class="col-md-6">
-            <div class="d-flex align-items-center gap-2">
-                        <button id="gpsBtn" class="btn btn-sm btn-outline-dark" type="button">
-                            <i class="fas fa-map-marker-alt"></i> Share Location
-                        </button>
-                <small class="text-muted" id="gpsStatus">GPS: idle</small>
-                        <div class="form-check form-switch ms-3">
-                            <input class="form-check-input" type="checkbox" role="switch" id="availSwitch">
-                            <label class="form-check-label" for="availSwitch">Available</label>
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-3">
+        <div class="col">
+            <h4 class="mb-0"><i class="fas fa-user-md me-2"></i>Field Paramedic Interface</h4>
+        </div>
+        <div class="col-auto">
+            <span id="wsIndicator" class="badge bg-secondary me-2">WS: unknown</span>
+            <span class="badge bg-info">
+                <i class="fas fa-user me-1"></i>{{ request.user.get_full_name }}
+            </span>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Main Call Card (Left Column) -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="fas fa-phone-alt me-2"></i>Active Call</h5>
+                    
+                    {% if active_call %}
+                    <div class="mb-3" id="activeCallCard" data-call-id="{{ active_call.id }}" data-ambulance-id="{% if active_call.assigned_ambulance %}{{ active_call.assigned_ambulance.id }}{% endif %}">
+                        <!-- Call Header -->
+                        <div class="alert alert-{{ active_call.priority|lower|default:'secondary' }} mb-3">
+                            <div class="fw-bold fs-5">{{ active_call.call_id }}</div>
+                            <div class="text-muted small">
+                                <i class="fas fa-stethoscope me-1"></i>{{ active_call.get_emergency_type_display }}
+                                {% if active_call.priority %}
+                                <span class="badge bg-{{ active_call.priority|lower|default:'secondary' }} ms-2">
+                                    {{ active_call.get_priority_display }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Location -->
+                        <div class="mb-3 p-2 bg-light rounded">
+                            <div class="small text-muted"><i class="fas fa-location-dot me-1"></i>Location</div>
+                            <div class="fw-bold">{{ active_call.location_address }}</div>
+                            {% if active_call.latitude and active_call.longitude %}
+                            <div class="small text-muted">
+                                {{ active_call.latitude }}, {{ active_call.longitude }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Description -->
+                        {% if active_call.description %}
+                        <div class="mb-3 p-2 bg-warning-light rounded">
+                            <div class="small text-muted"><i class="fas fa-info-circle me-1"></i>Description</div>
+                            <div>{{ active_call.description }}</div>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Patient Info -->
+                        {% if active_call.patient_name %}
+                        <div class="mb-3 p-2 bg-light rounded">
+                            <div class="small text-muted"><i class="fas fa-user me-1"></i>Patient Information</div>
+                            <table class="table table-sm mb-0">
+                                <tr>
+                                    <td><strong>Name:</strong></td>
+                                    <td>{{ active_call.patient_name }}</td>
+                                </tr>
+                                {% if active_call.patient_age %}
+                                <tr>
+                                    <td><strong>Age:</strong></td>
+                                    <td>{{ active_call.patient_age }} years</td>
+                                </tr>
+                                {% endif %}
+                                {% if active_call.patient_condition %}
+                                <tr>
+                                    <td><strong>Condition:</strong></td>
+                                    <td><em>{{ active_call.patient_condition }}</em></td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Current Status -->
+                        <div class="mb-3 p-2 bg-light rounded">
+                            <div class="small text-muted"><i class="fas fa-heartbeat me-1"></i>Current Status</div>
+                            <div id="statusBadge" class="badge bg-primary fs-6">{{ active_call.get_status_display }}</div>
+                            <div class="small text-muted mt-2">
+                                <i class="fas fa-clock me-1"></i>
+                                Received: <span id="callDuration">{{ active_call.received_at|timesince }} ago</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <button id="btnEnRoute" class="btn btn-outline-primary btn-sm w-100" onclick="guardedUpdate('EN_ROUTE')">
+                                    <i class="fas fa-car me-1"></i>EN ROUTE
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button id="btnOnScene" class="btn btn-outline-danger btn-sm w-100" onclick="guardedUpdate('ON_SCENE')">
+                                    <i class="fas fa-hospital me-1"></i>ON SCENE
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button id="btnTransporting" class="btn btn-outline-warning btn-sm w-100" onclick="guardedUpdate('TRANSPORTING')">
+                                    <i class="fas fa-ambulance me-1"></i>TRANSPORTING
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button id="btnAtHospital" class="btn btn-outline-success btn-sm w-100" onclick="confirmAndUpdate('AT_HOSPITAL', 'Confirm arrival at hospital?')">
+                                    <i class="fas fa-building me-1"></i>HOSPITAL
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <button id="btnClosed" class="btn btn-outline-secondary btn-sm w-100" onclick="confirmAndUpdate('CLOSED', 'Close the call and return to service?')">
+                                    <i class="fas fa-check-circle me-1"></i>BACK IN SERVICE
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div class="col-md-6 text-end">
-                    <small class="text-muted">
-                        <i class="fas fa-clock me-1"></i>
-                        Received: <span id="callDuration">{{ active_call.received_at|timesince }} ago</span>
-                    </small>
+                    {% else %}
+                    <!-- No Active Call State -->
+                    <div class="text-center py-5">
+                        <i class="fas fa-phone-alt fa-3x text-muted mb-3"></i>
+                        <h6 class="text-muted">No Active Call</h6>
+                        <p id="noActiveCallMsg" class="text-muted mb-3">Waiting for dispatch assignment...</p>
+                        <div class="d-flex justify-content-center">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <p class="small text-muted">Your status:</p>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="availSwitch" checked>
+                                <label class="form-check-label" for="availSwitch">Available for dispatch</label>
+                            </div>
+                        </div>
+                        
+                        <!-- Preparation Checklist (shown when idle) -->
+                        <div class="mt-5 p-4 bg-light rounded" id="preparationChecklist">
+                            <h6 class="mb-3"><i class="fas fa-clipboard-list me-2"></i>Pre-Dispatch Preparation</h6>
+                            <small class="text-muted">Ensure you're ready for assignment:</small>
+                            <div class="mt-3 text-start">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="check1">
+                                    <label class="form-check-label small" for="check1">
+                                        Equipment checked and stocked
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="check2">
+                                    <label class="form-check-label small" for="check2">
+                                        Vehicle fuel and battery levels OK
+                                    </label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="check3">
+                                    <label class="form-check-label small" for="check3">
+                                        Team briefed and ready
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="check4">
+                                    <label class="form-check-label small" for="check4">
+                                        Communication devices tested
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
-            {% else %}
-            <div class="text-center py-4">
-                <i class="fas fa-phone-alt fa-3x text-muted mb-3"></i>
-                <h6 class="text-muted">No Active Call</h6>
-                <p id="noActiveCallMsg" class="text-muted">Waiting for dispatch assignment...</p>
-                <div class="d-flex justify-content-center">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
+        </div>
+
+        <!-- Right Sidebar -->
+        <div class="col-lg-4">
+            <!-- Quick Actions Card -->
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-tools me-2"></i>Quick Actions</h6>
+                </div>
+                <div class="card-body">
+                    {% if active_call %}
+                    <button id="gpsBtn" class="btn btn-primary btn-sm w-100 mb-2" type="button">
+                        <i class="fas fa-map-marker-alt me-1"></i>Share Location
+                    </button>
+                    <small class="text-muted d-block mb-2" id="gpsStatus">GPS: idle</small>
+                    {% endif %}
+                    
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="availSwitch" {% if active_call %}disabled{% endif %} checked>
+                        <label class="form-check-label small" for="availSwitch">
+                            Available for dispatch
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ambulance Info Card -->
+            {% if active_call and active_call.assigned_ambulance %}
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-ambulance me-2"></i>Assigned Ambulance</h6>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm mb-0">
+                        <tr>
+                            <td class="text-muted small">Unit:</td>
+                            <td class="fw-bold">{{ active_call.assigned_ambulance.unit_number }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted small">Type:</td>
+                            <td>{{ active_call.assigned_ambulance.get_unit_type_display }}</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted small">Status:</td>
+                            <td>
+                                <span class="badge bg-info">{{ active_call.assigned_ambulance.get_status_display }}</span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted small">Capacity:</td>
+                            <td>{{ active_call.assigned_ambulance.max_patients }} patients</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Dispatcher Info Card -->
+            {% if active_call and active_call.dispatcher %}
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-headset me-2"></i>Dispatcher</h6>
+                </div>
+                <div class="card-body">
+                    <div class="fw-bold">{{ active_call.dispatcher.get_full_name }}</div>
+                    {% if active_call.dispatcher.phone_number %}
+                    <div class="small">
+                        <i class="fas fa-phone me-1"></i>
+                        <a href="tel:{{ active_call.dispatcher.phone_number }}">
+                            {{ active_call.dispatcher.phone_number }}
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Hospital Info Card -->
+            {% if active_call and active_call.hospital_destination %}
+            <div class="card shadow-sm mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-hospital me-2"></i>Destination Hospital</h6>
+                </div>
+                <div class="card-body">
+                    <div class="fw-bold">{{ active_call.hospital_destination }}</div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Preparation Required Card (when active) -->
+            {% if active_call %}
+            <div class="card shadow-sm mb-3 border-warning">
+                <div class="card-header bg-warning-light">
+                    <h6 class="mb-0"><i class="fas fa-check-circle me-2"></i>Preparation Tasks</h6>
+                </div>
+                <div class="card-body">
+                    <div class="small mb-3"><strong>Prepare for patient arrival:</strong></div>
+                    <ul class="list-unstyled small">
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            <strong>Bed Allocation:</strong> Prepare suitable bed based on condition
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            <strong>Ward Assignment:</strong> Assign appropriate ward/unit
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            <strong>Equipment:</strong> Ready monitoring/diagnostic equipment
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success me-2"></i>
+                            <strong>Staff Notify:</strong> Alert ward staff and physicians
+                        </li>
+                        <li>
+                            <i class="fas fa-check text-success me-2"></i>
+                            <strong>Medications:</strong> Prepare emergency medications if needed
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Timeline Card -->
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-clock me-2"></i>Response Timeline</h6>
+                </div>
+                <div class="card-body small">
+                    <div class="mb-2">
+                        <span class="badge bg-primary">DISPATCHED</span>
+                        <span class="text-muted">You assigned</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-secondary">EN_ROUTE</span>
+                        <span class="text-muted">Heading to scene</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-secondary">ON_SCENE</span>
+                        <span class="text-muted">Patient assessment</span>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge bg-secondary">TRANSPORTING</span>
+                        <span class="text-muted">En route to hospital</span>
+                    </div>
+                    <div>
+                        <span class="badge bg-secondary">AT_HOSPITAL</span>
+                        <span class="text-muted">Patient handoff</span>
                     </div>
                 </div>
             </div>
@@ -84,83 +330,28 @@
         </div>
     </div>
 
-    <!-- Additional Info Card for active calls -->
-    {% if active_call %}
-    <div class="card shadow-sm mt-3" id="callDetailsCard">
+    <!-- Emergency Images Modal -->
+    {% if active_call and active_call.emergency_images %}
+    <div class="card shadow-sm">
         <div class="card-header">
-            <h6 class="mb-0"><i class="fas fa-info-circle me-2"></i>Call Details</h6>
+            <h6 class="mb-0"><i class="fas fa-camera me-2"></i>Emergency Images</h6>
         </div>
         <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <table class="table table-sm">
-                        <tr>
-                            <td><strong>Call ID:</strong></td>
-                            <td>{{ active_call.call_id }}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Caller:</strong></td>
-                            <td>{{ active_call.caller_name }}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Phone:</strong></td>
-                            <td>{{ active_call.caller_phone }}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Type:</strong></td>
-                            <td>{{ active_call.get_emergency_type_display }}</td>
-                        </tr>
-                    </table>
+            <div class="row g-2">
+                {% for img in active_call.emergency_images %}
+                <div class="col-md-4">
+                    <img src="{{ img.url }}" class="img-fluid rounded" alt="Emergency image" 
+                         onclick="showImageModal('{{ img.url }}')" 
+                         style="cursor: pointer; max-height: 150px; object-fit: cover; width: 100%;">
                 </div>
-                <div class="col-md-6">
-                    <table class="table table-sm">
-                        <tr>
-                            <td><strong>Priority:</strong></td>
-                            <td>
-                                <span class="badge {% if active_call.priority == 'CRITICAL' %}bg-danger{% elif active_call.priority == 'HIGH' %}bg-warning{% elif active_call.priority == 'MEDIUM' %}bg-primary{% else %}bg-secondary{% endif %}">
-                                    {{ active_call.get_priority_display }}
-                                </span>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>Status:</strong></td>
-                            <td>{{ active_call.get_status_display }}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Received:</strong></td>
-                            <td>{{ active_call.received_at|date:"M j, Y H:i" }}</td>
-                        </tr>
-                        {% if active_call.dispatcher %}
-                        <tr>
-                            <td><strong>Dispatcher:</strong></td>
-                            <td>{{ active_call.dispatcher.get_full_name }}</td>
-                        </tr>
-                        {% endif %}
-                    </table>
-                </div>
+                {% endfor %}
             </div>
-            
-            {% if active_call.emergency_images %}
-            <div class="mt-3">
-                <h6><i class="fas fa-camera me-2"></i>Emergency Images</h6>
-                <div class="row">
-                    {% for img in active_call.emergency_images %}
-                    <div class="col-md-3 mb-2">
-                        <img src="{{ img.url }}" class="img-fluid rounded" alt="Emergency image" 
-                             onclick="showImageModal('{{ img.url }}')" 
-                             style="cursor: pointer;">
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
     {% endif %}
 </div>
 
 <!-- Image Modal -->
-{% if active_call and active_call.emergency_images %}
 <div class="modal fade" id="imageModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -174,12 +365,439 @@
         </div>
     </div>
 </div>
-{% endif %}
 
 <style>
+.bg-warning-light { background-color: #fff3cd; }
+.bg-success-light { background-color: #d1e7dd; }
 .btn-outline-purple { border-color: #6f42c1; color: #6f42c1; }
 .btn-outline-purple:hover { background-color: #6f42c1; color: #fff; }
 </style>
+
+<script>
+// WebSocket Setup
+const wsIndicator = document.getElementById('wsIndicator');
+let wsConnection = null;
+
+// Connect to WebSocket
+function connectWebSocket() {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/emergencies/`;
+    
+    try {
+        wsConnection = new WebSocket(wsUrl);
+        
+        wsConnection.onopen = (event) => {
+            console.log('WebSocket connected');
+            wsIndicator.textContent = 'WS: connected';
+            wsIndicator.className = 'badge bg-success me-2';
+        };
+        
+        wsConnection.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('WebSocket message received:', data);
+                
+                if (data.event === 'UNIT_DISPATCHED' || data.type === 'emergency_update') {
+                    // New dispatch assignment
+                    const eventData = data.data || data;
+                    showDispatchNotification(eventData);
+                    // Reload page after a short delay to show notification
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else if (data.emergency_id === document.getElementById('activeCallCard')?.dataset.callId) {
+                    // Status update for current call
+                    location.reload();
+                }
+            } catch (err) {
+                console.error('Error processing WebSocket message:', err);
+            }
+        };
+        
+        wsConnection.onclose = (event) => {
+            console.log('WebSocket disconnected');
+            wsIndicator.textContent = 'WS: disconnected';
+            wsIndicator.className = 'badge bg-danger me-2';
+            // Attempt to reconnect after 3 seconds
+            setTimeout(connectWebSocket, 3000);
+        };
+        
+        wsConnection.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            wsIndicator.textContent = 'WS: error';
+            wsIndicator.className = 'badge bg-warning me-2';
+        };
+    } catch (err) {
+        console.error('Failed to create WebSocket:', err);
+        wsIndicator.textContent = 'WS: failed';
+        wsIndicator.className = 'badge bg-danger me-2';
+    }
+}
+
+// Connect on page load
+connectWebSocket();
+
+// Allowed transitions map
+const allowedTransitions = {
+    'DISPATCHED': ['EN_ROUTE'],
+    'EN_ROUTE': ['ON_SCENE'],
+    'ON_SCENE': ['TRANSPORTING'],
+    'TRANSPORTING': ['AT_HOSPITAL'],
+    'AT_HOSPITAL': ['CLOSED']
+};
+
+// Validate status transition
+function validateAllowedTransitions(currentStatus, newStatus) {
+    const allowed = allowedTransitions[currentStatus] || [];
+    return allowed.includes(newStatus);
+}
+
+// Update status with validation
+function guardedUpdate(newStatus) {
+    const card = document.getElementById('activeCallCard');
+    if (!card) return;
+    
+    const callId = card.dataset.callId;
+    const badge = document.getElementById('statusBadge');
+    const currentStatus = badge.textContent.trim();
+    
+    if (!validateAllowedTransitions(currentStatus, newStatus)) {
+        const btn = document.getElementById(`btn${newStatus.split('_').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join('')}`);
+        if (btn) {
+            btn.disabled = true;
+            setTimeout(() => btn.disabled = false, 2000);
+        }
+        return;
+    }
+    
+    performStatusUpdate(callId, newStatus);
+}
+
+// Confirm action before updating (for important transitions)
+function confirmAndUpdate(newStatus, message) {
+    if (confirm(message)) {
+        const card = document.getElementById('activeCallCard');
+        if (card) {
+            const callId = card.dataset.callId;
+            performStatusUpdate(callId, newStatus);
+        }
+    }
+}
+
+// Perform the actual status update
+function performStatusUpdate(callId, newStatus) {
+    const btn = event.target.closest('button');
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Updating...';
+    
+    fetch(`/api/emergencies/${callId}/status/`, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ status: newStatus })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Status update failed');
+        return response.json();
+    })
+    .then(data => {
+        const badge = document.getElementById('statusBadge');
+        if (badge) {
+            badge.textContent = data.status;
+        }
+        // Disable button if transition is complete
+        if (newStatus === 'CLOSED') {
+            location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to update status. Please try again.');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalContent;
+    });
+}
+
+// GPS Location Sharing
+function shareLocation() {
+    const gpsBtn = document.getElementById('gpsBtn');
+    const gpsStatus = document.getElementById('gpsStatus');
+    const card = document.getElementById('activeCallCard');
+    
+    if (!card) return;
+    
+    const ambulanceId = card.dataset.ambulanceId;
+    if (!ambulanceId) {
+        alert('No ambulance assigned');
+        return;
+    }
+    
+    gpsBtn.disabled = true;
+    gpsStatus.textContent = 'GPS: acquiring...';
+    
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const { latitude, longitude, accuracy } = position.coords;
+                
+                fetch(`/dispatch/api/ambulances/${ambulanceId}/location/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ latitude, longitude, accuracy })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    gpsStatus.textContent = `GPS: shared (±${accuracy.toFixed(0)}m)`;
+                    gpsStatus.className = 'text-success small d-block mb-2';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    gpsStatus.textContent = 'GPS: failed';
+                    gpsStatus.className = 'text-danger small d-block mb-2';
+                })
+                .finally(() => {
+                    setTimeout(() => {
+                        gpsBtn.disabled = false;
+                        gpsStatus.textContent = 'GPS: idle';
+                        gpsStatus.className = 'text-muted small d-block mb-2';
+                    }, 2000);
+                });
+            },
+            (error) => {
+                console.error('Geolocation error:', error);
+                gpsStatus.textContent = `GPS: ${error.message}`;
+                gpsStatus.className = 'text-danger small d-block mb-2';
+                gpsBtn.disabled = false;
+            }
+        );
+    } else {
+        alert('Geolocation not supported');
+        gpsBtn.disabled = false;
+    }
+}
+
+// Auto-share location every 15 seconds when active call exists
+let gpsInterval = null;
+function startAutoGPS() {
+    const card = document.getElementById('activeCallCard');
+    if (card && !gpsInterval) {
+        gpsInterval = setInterval(() => {
+            const ambulanceId = card.dataset.ambulanceId;
+            if (ambulanceId && navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        fetch(`/dispatch/api/ambulances/${ambulanceId}/location/`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': getCookie('csrftoken')
+                            },
+                            body: JSON.stringify({ latitude, longitude })
+                        }).catch(e => console.log('Auto GPS error:', e));
+                    }
+                );
+            }
+        }, 15000);
+    }
+}
+
+function stopAutoGPS() {
+    if (gpsInterval) {
+        clearInterval(gpsInterval);
+        gpsInterval = null;
+    }
+}
+
+// Toggle Availability
+function toggleAvailability() {
+    const availSwitch = document.getElementById('availSwitch');
+    availSwitch.disabled = true;
+    
+    fetch('/core/api/paramedics/toggle-availability/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        availSwitch.checked = data.is_available;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        availSwitch.checked = !availSwitch.checked;
+    })
+    .finally(() => {
+        availSwitch.disabled = false;
+    });
+}
+
+// Poll for new assignments every 10 seconds if no active call
+function pollForAssignments() {
+    if (!document.getElementById('activeCallCard')) {
+        fetch('/api/emergencies/my-active/')
+            .then(response => response.json())
+            .then(data => {
+                if (data.emergency_call) {
+                    location.reload();
+                }
+            })
+            .catch(e => console.log('Poll error:', e));
+    }
+}
+
+// Image Modal
+function showImageModal(imgUrl) {
+    const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+    document.getElementById('modalImage').src = imgUrl;
+    modal.show();
+}
+
+// Update call duration
+function updateCallDuration() {
+    const card = document.getElementById('activeCallCard');
+    if (!card) return;
+    
+    const receivedTimeStr = card.dataset.receivedAt;
+    if (receivedTimeStr) {
+        const receivedTime = new Date(receivedTimeStr);
+        const now = new Date();
+        const diff = Math.floor((now - receivedTime) / 1000);
+        
+        let duration = '';
+        if (diff < 60) {
+            duration = diff + ' second' + (diff !== 1 ? 's' : '');
+        } else if (diff < 3600) {
+            const mins = Math.floor(diff / 60);
+            duration = mins + ' minute' + (mins !== 1 ? 's' : '');
+        } else {
+            const hours = Math.floor(diff / 3600);
+            const mins = Math.floor((diff % 3600) / 60);
+            duration = hours + ' hour' + (hours !== 1 ? 's' : '') + ' ' + mins + 'm';
+        }
+        
+        const durationEl = document.getElementById('callDuration');
+        if (durationEl) durationEl.textContent = duration + ' ago';
+    }
+}
+
+// Show dispatch notification alert
+function showDispatchNotification(data) {
+    // Call acknowledgment endpoint
+    const emergencyId = data.id || data.emergency_id;
+    
+    // Acknowledge the dispatch
+    fetch(`/emergencies/api/emergencies/${emergencyId}/acknowledge/`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    }).then(response => {
+        if (response.ok) {
+            console.log('Dispatch acknowledged successfully');
+        }
+    }).catch(err => console.error('Error acknowledging dispatch:', err));
+    
+    const alertHtml = `
+        <div class="alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3" role="alert" style="z-index: 9999; width: 90%; max-width: 500px;">
+            <h4 class="alert-heading"><i class="fas fa-bell me-2"></i>New Dispatch Assignment!</h4>
+            <p class="mb-2"><strong>Emergency ID:</strong> ${data.call_id || 'N/A'}</p>
+            <p class="mb-2"><strong>Type:</strong> ${data.emergency_type_display || 'N/A'}</p>
+            <p class="mb-2"><strong>Location:</strong> ${data.location_address || 'N/A'}</p>
+            <p class="mb-2"><strong>Priority:</strong> ${data.priority_display || 'N/A'}</p>
+            <hr>
+            <p class="mb-0">Preparing dashboard... <span class="spinner-border spinner-border-sm ms-2" role="status"></span></p>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('afterbegin', alertHtml);
+    
+    // Play notification sound (optional)
+    playNotificationSound();
+    
+    // Auto-dismiss after 3 seconds
+    setTimeout(() => {
+        const alert = document.querySelector('.alert-success');
+        if (alert) {
+            alert.remove();
+        }
+    }, 3000);
+}
+
+// Play notification sound
+function playNotificationSound() {
+    // Create a simple beep using Web Audio API
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (e) {
+        console.log('Could not play notification sound:', e);
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    // GPS button
+    const gpsBtn = document.getElementById('gpsBtn');
+    if (gpsBtn) gpsBtn.onclick = shareLocation;
+    
+    // Availability switch
+    const availSwitch = document.getElementById('availSwitch');
+    if (availSwitch) availSwitch.onchange = toggleAvailability;
+    
+    // Start polling and auto-GPS
+    startAutoGPS();
+    setInterval(pollForAssignments, 10000);
+    setInterval(updateCallDuration, 1000);
+    
+    // Initial duration update
+    updateCallDuration();
+});
+
+// Cleanup
+window.addEventListener('beforeunload', stopAutoGPS);
+
+// Helper function
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            cookie = cookie.trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
 
 {% endblock %}
 

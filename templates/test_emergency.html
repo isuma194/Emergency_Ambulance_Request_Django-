@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Emergency Alert</title>
+    <link href="/static/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding: 20px; background: #f5f5f5; }
+        .container { max-width: 600px; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #d9534f; margin-bottom: 20px; }
+        .alert { margin: 20px 0; }
+        .btn { margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 Test Emergency Alert System</h1>
+        
+        <div class="alert alert-info">
+            <strong>Instructions:</strong>
+            <ol>
+                <li>Open dispatcher dashboard in another tab</li>
+                <li>Click "Create Test Emergency" below</li>
+                <li>Check if alarm sounds and alert appears in dispatcher dashboard</li>
+            </ol>
+        </div>
+
+        <div id="status" class="alert alert-secondary" style="display: none;"></div>
+
+        <button class="btn btn-danger btn-lg w-100" onclick="createTestEmergency()">
+            <i class="fas fa-phone"></i> Create Test Emergency
+        </button>
+
+        <button class="btn btn-secondary btn-sm w-100 mt-2" onclick="testAudioOnly()">
+            Test Audio Only (No API Call)
+        </button>
+
+        <div class="mt-4">
+            <h5>Test Details:</h5>
+            <pre id="responseData" style="background: #f9f9f9; padding: 10px; border-radius: 4px; display: none;"></pre>
+        </div>
+    </div>
+
+    <script>
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `alert alert-${type}`;
+            statusEl.style.display = 'block';
+        }
+
+        function createTestEmergency() {
+            showStatus('Creating emergency...', 'info');
+            
+            const emergencyData = {
+                caller_name: 'Test Caller',
+                caller_phone: '1234567890',
+                emergency_type: 'ACCIDENT',
+                location_address: 'Test Location',
+                location_latitude: 37.7749,
+                location_longitude: -122.4194,
+                patient_name: 'Test Patient',
+                patient_age: 35,
+                patient_gender: 'M',
+                description: 'Test emergency for alarm notification'
+            };
+
+            fetch('/api/emergencies/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify(emergencyData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                showStatus('✅ Emergency created! Call ID: ' + data.call_id, 'success');
+                document.getElementById('responseData').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('responseData').style.display = 'block';
+                
+                // Test audio
+                setTimeout(() => testAudioOnly(), 500);
+            })
+            .catch(error => {
+                showStatus('❌ Error: ' + error.message, 'danger');
+                document.getElementById('responseData').textContent = error.message;
+                document.getElementById('responseData').style.display = 'block';
+            });
+        }
+
+        function testAudioOnly() {
+            showStatus('Testing audio alarm...', 'warning');
+            playTestAlarm();
+            setTimeout(() => showStatus('🔊 Audio test complete!', 'success'), 500);
+        }
+
+        function playTestAlarm() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                const beep = (frequency, duration, start) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    osc.connect(gain);
+                    gain.connect(audioContext.destination);
+                    
+                    osc.frequency.value = frequency;
+                    osc.type = 'sine';
+                    
+                    gain.gain.setValueAtTime(0.3, start);
+                    gain.gain.exponentialRampToValueAtTime(0.01, start + duration);
+                    
+                    osc.start(start);
+                    osc.stop(start + duration);
+                };
+                
+                const now = audioContext.currentTime;
+                const pattern = [
+                    { freq: 1000, duration: 0.3 },
+                    { freq: 600, duration: 0.3 },
+                    { freq: 1000, duration: 0.3 },
+                    { freq: 600, duration: 0.3 },
+                    { freq: 1000, duration: 0.3 },
+                    { freq: 600, duration: 0.3 }
+                ];
+                
+                let time = now;
+                pattern.forEach(({freq, duration}) => {
+                    beep(freq, duration, time);
+                    time += duration;
+                });
+            } catch (e) {
+                showStatus('❌ Audio Error: ' + e.message, 'danger');
+            }
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+</body>
+</html>

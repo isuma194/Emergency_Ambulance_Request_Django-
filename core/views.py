@@ -13,12 +13,12 @@ from django.db.models import Q
 def login_view(request):
     """Staff login view"""
     if request.user.is_authenticated:
-        if getattr(request.user, 'is_admin', False) or getattr(request.user, 'is_staff', False):
-            return redirect('core:admin_dashboard')
-        if request.user.is_dispatcher:
-            return redirect('emergencies:dispatcher_dashboard')
-        elif request.user.is_paramedic:
+        if request.user.is_paramedic:
             return redirect('emergencies:paramedic_interface')
+        elif request.user.is_dispatcher:
+            return redirect('emergencies:dispatcher_dashboard')
+        elif getattr(request.user, 'is_admin', False) or request.user.is_superuser:
+            return redirect('core:admin_dashboard')
         else:
             return redirect('admin:index')
     
@@ -32,13 +32,13 @@ def login_view(request):
             login(request, user)
             messages.success(request, f'Welcome back, {user.get_full_name() or user.username}!')
             
-            # Redirect based on user role
-            if getattr(user, 'is_admin', False) or getattr(user, 'is_staff', False):
-                return redirect('core:admin_dashboard')
-            if user.is_dispatcher:
-                return redirect('emergencies:dispatcher_dashboard')
-            elif user.is_paramedic:
+            # Redirect based on user role - check role-specific properties first
+            if user.is_paramedic:
                 return redirect('emergencies:paramedic_interface')
+            elif user.is_dispatcher:
+                return redirect('emergencies:dispatcher_dashboard')
+            elif getattr(user, 'is_admin', False) or user.is_superuser:
+                return redirect('core:admin_dashboard')
             else:
                 return redirect('admin:index')
         else:
@@ -58,12 +58,12 @@ def logout_view(request):
 def home_view(request):
     """Welcome page or redirect to appropriate dashboard"""
     if request.user.is_authenticated:
-        if getattr(request.user, 'is_admin', False) or getattr(request.user, 'is_staff', False):
-            return redirect('core:admin_dashboard')
-        if request.user.is_dispatcher:
-            return redirect('emergencies:dispatcher_dashboard')
         if request.user.is_paramedic:
             return redirect('emergencies:paramedic_interface')
+        elif request.user.is_dispatcher:
+            return redirect('emergencies:dispatcher_dashboard')
+        elif getattr(request.user, 'is_admin', False) or request.user.is_superuser:
+            return redirect('core:admin_dashboard')
     return render(request, 'core/welcome.html')
 
 
@@ -138,3 +138,77 @@ class ToggleAvailabilityView(generics.UpdateAPIView):
         request.user.is_available_for_dispatch = bool(val) if isinstance(val, bool) else str(val).lower() in ('1','true','yes','on')
         request.user.save(update_fields=['is_available_for_dispatch'])
         return Response(UserSerializer(request.user).data)
+
+
+def initialize_test_users_view(request):
+    """Initialize test users for development/testing"""
+    User = get_user_model()
+    
+    users_created = []
+    
+    # Create Dispatcher
+    dispatcher, created = User.objects.get_or_create(
+        username='dispatcher',
+        defaults={
+            'email': 'dispatcher@test.com',
+            'first_name': 'John',
+            'last_name': 'Dispatcher',
+            'role': 'dispatcher',
+            'is_staff': True,
+            'is_active': True,
+        }
+    )
+    dispatcher.set_password('dispatcher123')
+    dispatcher.save()
+    users_created.append({
+        'username': 'dispatcher',
+        'password': 'dispatcher123',
+        'role': 'dispatcher',
+        'created': created
+    })
+    
+    # Create Paramedic
+    paramedic, created = User.objects.get_or_create(
+        username='paramedic',
+        defaults={
+            'email': 'paramedic@test.com',
+            'first_name': 'Jane',
+            'last_name': 'Paramedic',
+            'role': 'paramedic',
+            'is_staff': True,
+            'is_active': True,
+            'is_available_for_dispatch': True,
+        }
+    )
+    paramedic.set_password('paramedic123')
+    paramedic.save()
+    users_created.append({
+        'username': 'paramedic',
+        'password': 'paramedic123',
+        'role': 'paramedic',
+        'created': created
+    })
+    
+    # Create Admin
+    admin_user, created = User.objects.get_or_create(
+        username='admin',
+        defaults={
+            'email': 'admin@test.com',
+            'first_name': 'Admin',
+            'last_name': 'User',
+            'role': 'admin',
+            'is_staff': True,
+            'is_active': True,
+            'is_superuser': True,
+        }
+    )
+    admin_user.set_password('admin123')
+    admin_user.save()
+    users_created.append({
+        'username': 'admin',
+        'password': 'admin123',
+        'role': 'admin',
+        'created': created
+    })
+    
+    return render(request, 'core/initialize_users.html', {'users': users_created})

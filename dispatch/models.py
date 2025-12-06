@@ -76,11 +76,23 @@ class Ambulance(models.Model):
     
     def assign_to_emergency(self, emergency_call, paramedic=None):
         """Assign this ambulance to an emergency call"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Verify ambulance is available before assignment
+        if not self.is_available:
+            raise ValueError(f"Ambulance {self.unit_number} is not available (status: {self.status})")
+        
+        # Verify emergency is in RECEIVED status
+        if emergency_call.status != 'RECEIVED':
+            raise ValueError(f"Emergency call {emergency_call.call_id} cannot be dispatched (status: {emergency_call.status})")
+        
         self.current_emergency = emergency_call
         self.status = 'EN_ROUTE'
         if paramedic:
             self.assigned_paramedic = paramedic
         self.save()
+        logger.info(f"Assigned ambulance {self.unit_number} to emergency {emergency_call.call_id}")
     
     def complete_assignment(self):
         """Mark assignment as complete and return to available status"""

@@ -87,21 +87,81 @@ def send_emergency_notification(
 
 def send_ambulance_notification(
     event: str,
-    ambulance_data: Dict[str, Any]
+    ambulance_data: Dict[str, Any],
+    paramedic_id: Optional[int] = None
 ) -> None:
     """
-    Send an ambulance-related notification to dispatchers.
+    Send an ambulance-related notification to dispatchers and optionally to a paramedic.
     
     Args:
         event: The event type (e.g., 'LOCATION_UPDATE', 'UNIT_DISPATCHED')
         ambulance_data: Serialized ambulance data
+        paramedic_id: Optional paramedic ID to also notify
     """
     send_channel_notification(
         group_name='dispatchers',
         message_type='ambulance_update',
         event=event,
-        data=ambulance_data
+        data=ambulance_data,
+        paramedic_id=paramedic_id
     )
+
+
+def send_paramedic_dispatch_notification(
+    event: str,
+    emergency_data: Dict[str, Any],
+    paramedic_id: int
+) -> None:
+    """
+    Send a dispatch notification to a specific paramedic when ambulance is assigned.
+    
+    Args:
+        event: The event type (e.g., 'UNIT_DISPATCHED')
+        emergency_data: Serialized emergency call data
+        paramedic_id: Paramedic ID to notify
+    """
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        
+        channel_layer = get_channel_layer()
+        if not channel_layer:
+            logger.warning("Channel layer not configured. Paramedic notification not sent.")
+            return
+        
+        # Send dispatch notification directly to paramedic's personal channel
+        async_to_sync(channel_layer.group_send)(
+            f'paramedic_{paramedic_id}',
+            {
+                'type': 'emergency_update',
+                'event': event,
+                'data': emergency_data
+            }
+        )
+        
+        logger.info(f"Dispatch notification sent to paramedic {paramedic_id}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to send paramedic dispatch notification: {e}", exc_info=True)
+
+
+def send_ambulance_alarm_notification(
+    emergency_data: Dict[str, Any]
+) -> None:
+    """
+    Send an ambulance alarm notification to all dispatchers when new emergency enters system.
+    
+    Args:
+        emergency_data: Serialized emergency call data
+    """
+    logger.info(f"🚨 Sending ambulance alarm for emergency {emergency_data.get('call_id', 'UNKNOWN')}")
+    send_channel_notification(
+        group_name='dispatchers',
+        message_type='ambulance_alarm',
+        event='AMBULANCE_ALARM',
+        data=emergency_data
+    )
+    logger.info(f"✓ Ambulance alarm sent to dispatchers group")
 
 
 def send_hospital_notification(

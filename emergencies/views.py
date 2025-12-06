@@ -120,12 +120,18 @@ class EmergencyCallListCreateView(generics.ListCreateAPIView):
     
     def send_notification(self, event_type, emergency_call):
         """Send WebSocket notification using optimized utility function"""
+        from core.utils import send_ambulance_alarm_notification
+        
         emergency_data = EmergencyCallSerializer(emergency_call).data
         send_emergency_notification(
             event=event_type,
             emergency_data=emergency_data,
             paramedic_id=emergency_call.assigned_paramedic_id
         )
+        
+        # Send ambulance alarm notification when new emergency enters system
+        if event_type == 'NEW_EMERGENCY':
+            send_ambulance_alarm_notification(emergency_data)
 
 
 class EmergencyCallDetailView(generics.RetrieveUpdateAPIView):
@@ -287,3 +293,73 @@ def upload_emergency_image(request):
     except Exception as e:
         return Response({'error': f'Failed to upload image: {str(e)}'}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def paramedic_dispatch_acknowledged(request, emergency_id):
+    """Endpoint for paramedic to acknowledge dispatch and begin preparation"""
+    
+    try:
+        emergency = EmergencyCall.objects.get(id=emergency_id)
+    except EmergencyCall.DoesNotExist:
+        return Response({'error': 'Emergency call not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if user is the assigned paramedic
+    if not request.user.is_paramedic:
+        return Response({'error': 'Only paramedics can acknowledge dispatch'}, status=status.HTTP_403_FORBIDDEN)
+    
+    if emergency.assigned_paramedic != request.user:
+        return Response({'error': 'You are not assigned to this call'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Log acknowledgment
+    logger.info(f"Paramedic {request.user.id} acknowledged dispatch for emergency {emergency_id}")
+    
+    # Return preparation details
+    return Response({
+        'status': 'acknowledged',
+        'emergency_id': emergency.id,
+        'call_id': emergency.call_id,
+        'emergency_type': emergency.get_emergency_type_display(),
+        'priority': emergency.get_priority_display(),
+        'location': emergency.location_address,
+        'patient_name': emergency.patient_name,
+        'patient_age': emergency.patient_age,
+        'patient_condition': emergency.patient_condition,
+        'hospital_destination': emergency.hospital_destination,
+        'dispatcher_name': emergency.dispatcher.get_full_name() if emergency.dispatcher else None,
+        'dispatcher_phone': getattr(emergency.dispatcher, 'phone_number', None) if emergency.dispatcher else None,
+        'preparation_tasks': [
+            {
+                'id': 'bed',
+                'title': 'Bed Allocation',
+                'description': 'Prepare suitable bed based on patient condition'
+            },
+            {
+                'id': 'ward',
+                'title': 'Ward Assignment',
+                'description': f'Assign to appropriate ward for {emergency.get_emergency_type_display()}'
+            },
+            {
+                'id': 'equipment',
+                'title': 'Equipment Setup',
+                'description': 'Ready monitoring and diagnostic equipment'
+            },
+            {
+                'id': 'staff',
+                'title': 'Staff Notification',
+                'description': 'Alert ward staff and notify physicians'
+            },
+            {
+                'id': 'medications',
+                'title': 'Emergency Medications',
+                'description': 'Prepare relevant medications based on emergency type'
+            }
+        ]
+    })
+
+
+def test_emergency_alert(request):
+    """Test page for emergency alert system"""
+    return render(request, 'test_emergency.html')
+

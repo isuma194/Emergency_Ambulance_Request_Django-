@@ -1,3 +1,4 @@
+import logging
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -12,6 +13,8 @@ from .serializers import (
     DispatchSerializer,
 )
 from core.utils import send_ambulance_notification, send_emergency_notification, send_hospital_notification
+
+logger = logging.getLogger(__name__)
 
 
 class AmbulanceListCreateView(generics.ListCreateAPIView):
@@ -89,68 +92,122 @@ def dispatch_ambulance(request):
     serializer = DispatchSerializer(data=request.data)
     
     if serializer.is_valid():
-        emergency_call_id = serializer.validated_data['emergency_call_id']
-        ambulance_id = serializer.validated_data['ambulance_id']
-        paramedic_id = serializer.validated_data.get('paramedic_id')
-        hospital_id = serializer.validated_data.get('hospital_id')
-        
-        # Get the objects
-        from emergencies.models import EmergencyCall
-        emergency_call = EmergencyCall.objects.get(id=emergency_call_id)
-        ambulance = Ambulance.objects.get(id=ambulance_id)
-        paramedic = None
-        
-        if paramedic_id:
-            from core.models import User
-            paramedic = User.objects.get(id=paramedic_id)
-        
-        # Assign ambulance to emergency
-        ambulance.assign_to_emergency(emergency_call, paramedic)
-        
-        # Update emergency call
-        emergency_call.assigned_ambulance = ambulance
-        emergency_call.assigned_paramedic = paramedic
-        emergency_call.dispatcher = request.user
-        if hospital_id:
-            from .models import Hospital
-            try:
-                dest = Hospital.objects.get(id=hospital_id)
-                emergency_call.hospital_destination = dest.name
-            except Hospital.DoesNotExist:
-                pass
-        emergency_call.update_status('DISPATCHED')
-        
-        # Send real-time notifications using optimized utility functions
-        from emergencies.serializers import EmergencyCallSerializer
-        
-        # Notify dispatchers about ambulance dispatch
-        ambulance_data = AmbulanceSerializer(ambulance).data
-        send_ambulance_notification(
-            event='UNIT_DISPATCHED',
-            ambulance_data=ambulance_data
-        )
-        
-        # Notify dispatchers about emergency status update
-        emergency_data = EmergencyCallSerializer(emergency_call).data
-        send_emergency_notification(
-            event='STATUS_UPDATE',
-            emergency_data=emergency_data,
-            paramedic_id=None  # Only send to dispatchers
-        )
-        
-        # Notify assigned paramedic about dispatch (UNIT_DISPATCHED event)
-        if emergency_call.assigned_paramedic_id:
-            send_emergency_notification(
+        try:
+            from django.db import transaction
+            from emergencies.models import EmergencyCall
+            from emergencies.serializers import EmergencyCallSerializer
+            
+            emergency_call_id = serializer.validated_data['emergency_call_id']
+            ambulance_id = serializer.validated_data['ambulance_id']
+            paramedic_id = serializer.validated_data.get('paramedic_id')
+            hospital_id = serializer.validated_data.get('hospital_id')
+            
+            # Use atomic transaction to ensure consistency
+            with transaction.atomic():
+                # Get the objects
+                try:
+                    emergency_call = EmergencyCall.objects.select_for_update().get(id=emergency_call_id)
+                    ambulance = Ambulance.objects.select_for_update().get(id=ambulance_id)
+                except EmergencyCall.DoesNotExist:
+                    logger.error(f"Emergency call {emergency_call_id} not found during dispatch")
+                    return Response({'error': 'Emergency call not found'}, status=status.HTTP_404_NOT_FOUND)
+                except Ambulance.DoesNotExist:
+                    logger.error(f"Ambulance {ambulance_id} not found during dispatch")
+                    return Response({'error': 'Ambulance not found'}, status=status.HTTP_404_NOT_FOUND)
+                
+                # Double-check ambulance is still available (prevent race condition)
+                if not ambulance.is_available:
+                    logger.warning(f"Ambulance {ambulance_id} is no longer available for dispatch")
+                    return Response({'error': 'Ambulance is no longer available'}, status=status.HTTP_409_CONFLICT)
+                
+                # Double-check emergency is still in RECEIVED status (prevent race condition)
+                if emergency_call.status != 'RECEIVED':
+                    logger.warning(f"Emergency call {emergency_call_id} status changed to {emergency_call.status}")
+                    return Response({'error': 'Emergency call is no longer in RECEIVED status'}, status=status.HTTP_409_CONFLICT)
+                
+                paramedic = None
+                if paramedic_id and paramedic_id != 0 and paramedic_id != "":
+                    from core.models import User
+                    try:
+                        paramedic = User.objects.get(id=paramedic_id)
+                        if not paramedic.is_paramedic:
+                            logger.warning(f"User {paramedic_id} is not a paramedic")
+                            return Response({'error': 'Selected user is not a paramedic'}, status=status.HTTP_400_BAD_REQUEST)
+                    except User.DoesNotExist:
+                        logger.error(f"Paramedic {paramedic_id} not found during dispatch")
+                        return Response({'error': 'Paramedic not found'}, status=status.HTTP_404_NOT_FOUND)
+                
+                # Assign ambulance to emergency
+                ambulance.assign_to_emergency(emergency_call, paramedic)
+                
+                # Update emergency call with all dispatch information
+                emergency_call.assigned_ambulance = ambulance
+                if paramedic:
+                    emergency_call.assigned_paramedic = paramedic
+                emergency_call.dispatcher = request.user
+                
+                # Set hospital destination if provided
+                if hospital_id and hospital_id != 0 and hospital_id != "":
+                    try:
+                        dest = Hospital.objects.get(id=hospital_id)
+                        emergency_call.hospital_destination = dest.name
+                        logger.info(f"Set hospital destination to {dest.name} for emergency {emergency_call_id}")
+                    except Hospital.DoesNotExist:
+                        logger.warning(f"Hospital {hospital_id} not found, skipping destination assignment")
+                
+                # Update emergency status to DISPATCHED
+                emergency_call.update_status('DISPATCHED')
+                
+                logger.info(f"Successfully dispatched ambulance {ambulance_id} for emergency {emergency_call_id}")
+            
+            # Send real-time notifications using optimized utility functions
+            # Notifications are sent outside the transaction
+            ambulance_data = AmbulanceSerializer(ambulance).data
+            emergency_data = EmergencyCallSerializer(emergency_call).data
+            
+            # Notify dispatchers about ambulance dispatch
+            send_ambulance_notification(
                 event='UNIT_DISPATCHED',
-                emergency_data=emergency_data,
-                paramedic_id=emergency_call.assigned_paramedic_id
+                ambulance_data=ambulance_data,
+                paramedic_id=paramedic.id if paramedic else None
             )
+            
+            # Notify dispatchers about emergency status update
+            send_emergency_notification(
+                event='STATUS_UPDATE',
+                emergency_data=emergency_data,
+                paramedic_id=paramedic.id if paramedic else None
+            )
+            
+            # Send DISPATCH notification specifically to the assigned paramedic
+            if paramedic:
+                from core.utils import send_paramedic_dispatch_notification
+                send_paramedic_dispatch_notification(
+                    event='UNIT_DISPATCHED',
+                    emergency_data=emergency_data,
+                    paramedic_id=paramedic.id
+                )
+            
+            # Notify assigned paramedic about dispatch
+            if emergency_call.assigned_paramedic_id:
+                send_emergency_notification(
+                    event='UNIT_DISPATCHED',
+                    emergency_data=emergency_data,
+                    paramedic_id=emergency_call.assigned_paramedic_id
+                )
+            
+            return Response({
+                'message': 'Ambulance dispatched successfully',
+                'emergency_call': emergency_data,
+                'ambulance': ambulance_data
+            })
         
-        return Response({
-            'message': 'Ambulance dispatched successfully',
-            'emergency_call': emergency_data,
-            'ambulance': ambulance_data
-        })
+        except Exception as e:
+            logger.exception(f"Unexpected error during ambulance dispatch: {str(e)}")
+            return Response(
+                {'error': f'Dispatch failed: {str(e)}'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -237,3 +294,56 @@ def update_hospital_capacity(request, pk):
         
         return Response(hospital_data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def auto_assign_paramedic(request):
+    """
+    Auto-assign an available paramedic for dispatch.
+    Returns the first available paramedic in the system.
+    """
+    if not request.user.is_dispatcher:
+        return Response({'error': 'Only dispatchers can auto-assign paramedics'}, status=status.HTTP_403_FORBIDDEN)
+    
+    from core.models import User
+    from django.db.models import Q
+    
+    try:
+        # Get first available paramedic (prioritize those marked as available for dispatch)
+        paramedic = User.objects.filter(
+            role='paramedic',
+            is_active=True,
+            is_available_for_dispatch=True
+        ).first()
+        
+        # If none available with explicit flag, try all active paramedics
+        if not paramedic:
+            paramedic = User.objects.filter(
+                role='paramedic',
+                is_active=True
+            ).first()
+        
+        if not paramedic:
+            return Response(
+                {'error': 'No paramedics available for dispatch'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Return paramedic data
+        from core.serializers import UserSerializer
+        return Response({
+            'id': paramedic.id,
+            'username': paramedic.username,
+            'first_name': paramedic.first_name,
+            'last_name': paramedic.last_name,
+            'full_name': paramedic.get_full_name() or paramedic.username,
+            'is_available_for_dispatch': paramedic.is_available_for_dispatch
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error auto-assigning paramedic: {str(e)}")
+        return Response(
+            {'error': f'Failed to auto-assign paramedic: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
