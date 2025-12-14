@@ -38,7 +38,7 @@
             
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    {% if user.is_admin or user.is_staff %}
+                    {% if user.is_admin or user.is_superuser %}
                     <li class="nav-item">
                         <a class="nav-link" href="{% url 'core:admin_dashboard' %}">
                             <i class="fas fa-user-shield me-1"></i>Admin
@@ -86,8 +86,10 @@
                             <small class="text-muted">({{ user.get_role_display }})</small>
                         </a>
                         <ul class="dropdown-menu">
+                            {% if user.is_admin or user.is_superuser %}
                             <li><a class="dropdown-item" href="{% url 'admin:index' %}">Admin</a></li>
                             <li><hr class="dropdown-divider"></li>
+                            {% endif %}
                             <li><a class="dropdown-item" href="{% url 'core:logout' %}">Logout</a></li>
                         </ul>
                     </li>

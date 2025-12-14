@@ -16,8 +16,9 @@ function showToast(message, type = 'info') {
 
 // Global error handler
 window.addEventListener('error', function(e) {
-	if (e && e.error) console.error('JavaScript error:', e.error);
-	showToast('An error occurred. Please check the console for details.', 'error');
+    if (e && e.error) console.error('JavaScript error:', e.error);
+    const msg = (e && (e.error?.message || e.message)) ? String(e.error?.message || e.message) : 'An error occurred';
+    showToast(msg, 'error');
 });
 
 // Helper to fetch JSON with CSRF

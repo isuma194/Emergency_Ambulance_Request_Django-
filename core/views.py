@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
@@ -10,6 +10,8 @@ from .serializers import UserSerializer
 from django.db.models import Q
 
 
+@ensure_csrf_cookie
+@csrf_protect
 def login_view(request):
     """Staff login view"""
     if request.user.is_authenticated:
@@ -76,7 +78,7 @@ def test_websocket_view(request):
 
 @login_required
 def admin_dashboard(request):
-    if not (getattr(request.user, 'is_admin', False) or getattr(request.user, 'is_staff', False)):
+    if not (getattr(request.user, 'is_admin', False) or getattr(request.user, 'is_superuser', False)):
         return render(request, 'core/login_required.html')
     return render(request, 'core/admin_dashboard.html')
 

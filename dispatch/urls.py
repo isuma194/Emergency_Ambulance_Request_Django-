@@ -13,7 +13,6 @@ urlpatterns = [
     path('api/ambulances/<int:pk>/location/', views.update_ambulance_location, name='update_ambulance_location'),
     path('api/hospitals/<int:pk>/capacity/', views.update_hospital_capacity, name='update_hospital_capacity'),
     path('api/dispatch/', views.dispatch_ambulance, name='dispatch_ambulance'),
-    path('api/dispatch/auto-assign-paramedic/', views.auto_assign_paramedic, name='auto_assign_paramedic'),
     path('api/hospitals/', views.HospitalListCreateView.as_view(), name='hospital_list'),
     path('api/hospitals/<int:pk>/', views.HospitalDetailView.as_view(), name='hospital_detail'),
 ]

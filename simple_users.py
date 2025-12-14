@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+py#!/usr/bin/env python
 import os
 import sys
 import django

@@ -110,7 +110,9 @@ def send_ambulance_notification(
 def send_paramedic_dispatch_notification(
     event: str,
     emergency_data: Dict[str, Any],
-    paramedic_id: int
+    paramedic_id: int,
+    ambulance_data: Optional[Dict[str, Any]] = None,
+    eta_minutes: Optional[int] = None
 ) -> None:
     """
     Send a dispatch notification to a specific paramedic when ambulance is assigned.
@@ -129,13 +131,17 @@ def send_paramedic_dispatch_notification(
             logger.warning("Channel layer not configured. Paramedic notification not sent.")
             return
         
-        # Send dispatch notification directly to paramedic's personal channel
+        payload = {
+            'call': emergency_data,
+            'ambulance': ambulance_data,
+            'eta_minutes': eta_minutes
+        }
         async_to_sync(channel_layer.group_send)(
             f'paramedic_{paramedic_id}',
             {
-                'type': 'emergency_update',
+                'type': 'ambulance_dispatched_to_paramedic',
                 'event': event,
-                'data': emergency_data
+                'data': payload
             }
         )
         
@@ -164,6 +170,20 @@ def send_ambulance_alarm_notification(
     logger.info(f"✓ Ambulance alarm sent to dispatchers group")
 
 
+def send_new_ambulance_request(
+    emergency_data: Dict[str, Any]
+) -> None:
+    """
+    Broadcast a dedicated event for newly created ambulance requests.
+    """
+    send_channel_notification(
+        group_name='dispatchers',
+        message_type='new_ambulance_request',
+        event='NEW_AMBULANCE_REQUEST',
+        data=emergency_data
+    )
+
+
 def send_hospital_notification(
     event: str,
     hospital_data: Dict[str, Any]
@@ -181,4 +201,15 @@ def send_hospital_notification(
         event=event,
         data=hospital_data
     )
+
+
+def check_ambulance_availability():
+    from dispatch.models import Ambulance
+    total = Ambulance.objects.count()
+    available = Ambulance.objects.filter(status='AVAILABLE').count()
+    return {
+        'total_count': total,
+        'available_count': available,
+        'is_available': available > 0,
+    }
 

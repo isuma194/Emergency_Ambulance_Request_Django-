@@ -137,6 +137,10 @@ def dispatch_ambulance(request):
                         logger.error(f"Paramedic {paramedic_id} not found during dispatch")
                         return Response({'error': 'Paramedic not found'}, status=status.HTTP_404_NOT_FOUND)
                 
+                # If no explicit paramedic provided, fall back to ambulance's assigned paramedic
+                if not paramedic and ambulance.assigned_paramedic:
+                    paramedic = ambulance.assigned_paramedic
+
                 # Assign ambulance to emergency
                 ambulance.assign_to_emergency(emergency_call, paramedic)
                 
@@ -169,23 +173,24 @@ def dispatch_ambulance(request):
             send_ambulance_notification(
                 event='UNIT_DISPATCHED',
                 ambulance_data=ambulance_data,
-                paramedic_id=paramedic.id if paramedic else None
+                paramedic_id=emergency_call.assigned_paramedic_id
             )
             
             # Notify dispatchers about emergency status update
             send_emergency_notification(
                 event='STATUS_UPDATE',
                 emergency_data=emergency_data,
-                paramedic_id=paramedic.id if paramedic else None
+                paramedic_id=emergency_call.assigned_paramedic_id
             )
             
-            # Send DISPATCH notification specifically to the assigned paramedic
-            if paramedic:
+            if emergency_call.assigned_paramedic_id:
                 from core.utils import send_paramedic_dispatch_notification
                 send_paramedic_dispatch_notification(
                     event='UNIT_DISPATCHED',
                     emergency_data=emergency_data,
-                    paramedic_id=paramedic.id
+                    paramedic_id=emergency_call.assigned_paramedic_id,
+                    ambulance_data=ambulance_data,
+                    eta_minutes=None
                 )
             
             # Notify assigned paramedic about dispatch
@@ -294,56 +299,3 @@ def update_hospital_capacity(request, pk):
         
         return Response(hospital_data)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def auto_assign_paramedic(request):
-    """
-    Auto-assign an available paramedic for dispatch.
-    Returns the first available paramedic in the system.
-    """
-    if not request.user.is_dispatcher:
-        return Response({'error': 'Only dispatchers can auto-assign paramedics'}, status=status.HTTP_403_FORBIDDEN)
-    
-    from core.models import User
-    from django.db.models import Q
-    
-    try:
-        # Get first available paramedic (prioritize those marked as available for dispatch)
-        paramedic = User.objects.filter(
-            role='paramedic',
-            is_active=True,
-            is_available_for_dispatch=True
-        ).first()
-        
-        # If none available with explicit flag, try all active paramedics
-        if not paramedic:
-            paramedic = User.objects.filter(
-                role='paramedic',
-                is_active=True
-            ).first()
-        
-        if not paramedic:
-            return Response(
-                {'error': 'No paramedics available for dispatch'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        # Return paramedic data
-        from core.serializers import UserSerializer
-        return Response({
-            'id': paramedic.id,
-            'username': paramedic.username,
-            'first_name': paramedic.first_name,
-            'last_name': paramedic.last_name,
-            'full_name': paramedic.get_full_name() or paramedic.username,
-            'is_available_for_dispatch': paramedic.is_available_for_dispatch
-        }, status=status.HTTP_200_OK)
-    
-    except Exception as e:
-        logger.error(f"Error auto-assigning paramedic: {str(e)}")
-        return Response(
-            {'error': f'Failed to auto-assign paramedic: {str(e)}'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )

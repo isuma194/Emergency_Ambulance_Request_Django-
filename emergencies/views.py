@@ -297,11 +297,11 @@ def upload_emergency_image(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def paramedic_dispatch_acknowledged(request, emergency_id):
+def paramedic_dispatch_acknowledged(request, pk=None, emergency_id=None):
     """Endpoint for paramedic to acknowledge dispatch and begin preparation"""
     
     try:
-        emergency = EmergencyCall.objects.get(id=emergency_id)
+        emergency = EmergencyCall.objects.get(id=emergency_id or pk)
     except EmergencyCall.DoesNotExist:
         return Response({'error': 'Emergency call not found'}, status=status.HTTP_404_NOT_FOUND)
     

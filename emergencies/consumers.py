@@ -178,3 +178,17 @@ class ParamedicConsumer(AsyncWebsocketConsumer):
             'event': event['event'],
             'data': event['data']
         }))
+
+    async def ambulance_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'ambulance_update',
+            'event': event['event'],
+            'data': event['data']
+        }))
+
+    async def ambulance_dispatched_to_paramedic(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'ambulance_dispatched_to_paramedic',
+            'event': event['event'],
+            'data': event['data']
+        }))
